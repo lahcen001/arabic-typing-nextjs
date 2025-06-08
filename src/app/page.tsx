@@ -66,7 +66,7 @@ export default function Home() {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<NodeJS.Timeout>();
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load copy history and user preferences from localStorage on mount
   useEffect(() => {
@@ -248,7 +248,6 @@ export default function Home() {
     
     const textarea = textareaRef.current;
     const cursorPos = textarea.selectionStart;
-    const textareaRect = textarea.getBoundingClientRect();
     
     // Get text before cursor
     const textBeforeCursor = textarea.value.substring(0, cursorPos);
@@ -604,7 +603,6 @@ export default function Home() {
       }
       
       // Position overlay relative to textarea
-      const textareaRect = textarea.getBoundingClientRect();
       const parent = textarea.parentElement;
       if (parent) {
         parent.style.position = 'relative';
@@ -1148,7 +1146,7 @@ export default function Home() {
                 <div className="p-4">
                   <h4 className="font-semibold text-blue-900 mb-2">💡 How to use:</h4>
                   <div className="text-sm text-blue-800 space-y-1">
-                    <p>• Type in English or Franco-Arabic (like "7abibi", "salam")</p>
+                    <p>• Type in English or Franco-Arabic (like &quot;7abibi&quot;, &quot;salam&quot;)</p>
                     <p>• Press <strong>Space or Enter</strong> to select the highlighted suggestion</p>
                     <p>• <strong>Paste Latin text</strong> to auto-convert all words to Arabic</p>
                     <p>• Use <strong>arrow keys ↑↓</strong> to navigate suggestions</p>

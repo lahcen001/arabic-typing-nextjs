@@ -1,7 +1,6 @@
 'use client';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+// Removed unused imports
 import { Separator } from "@/components/ui/separator";
 import { ArrowLeft, Scale, Shield, Users, Globe } from 'lucide-react';
 import Link from 'next/link';

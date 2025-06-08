@@ -20,13 +20,13 @@ const cairo = Cairo({
 
 const notoSansArabic = Noto_Sans_Arabic({
   variable: "--font-noto-arabic",
-  subsets: ["arabic", "latin"],
+  subsets: ["arabic"],
   weight: ["400", "600"],
 });
 
 const amiri = Amiri({
   variable: "--font-amiri",
-  subsets: ["arabic", "latin"],
+  subsets: ["arabic"],
   weight: ["400", "700"],
 });
 
