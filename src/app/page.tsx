@@ -817,13 +817,48 @@ export default function Home() {
     showNotification('Text pasted and converted! 🎉', 'success');
   }, [text, transliterate, showNotification]);
 
-  // Set example text
-  const setExample = useCallback((example: string) => {
-    setText(example);
+  // Set example text and auto-convert to Arabic
+  const setExample = useCallback(async (example: string) => {
+    console.log('Setting example:', example);
+    
+    // Split text into words while preserving spaces and punctuation
+    const words = example.split(/(\s+|[^\w\s])/);
+    const processedWords: string[] = [];
+    
+    for (const word of words) {
+      // Check if word is Latin (contains only English letters and numbers)
+      if (word && /^[a-zA-Z0-9]+$/.test(word)) {
+        console.log('Processing Latin word:', word);
+        try {
+          const candidates = await transliterate(word);
+          if (candidates && candidates.length > 0) {
+            console.log('Converting', word, 'to', candidates[0]);
+            processedWords.push(candidates[0]); // Use first suggestion
+          } else {
+            processedWords.push(word); // Keep original if no translation
+          }
+        } catch (error) {
+          console.error('Translation error for word:', word, error);
+          processedWords.push(word); // Keep original on error
+        }
+      } else {
+        // Keep spaces, punctuation, and non-Latin text as is
+        processedWords.push(word);
+      }
+    }
+    
+    const convertedText = processedWords.join('');
+    console.log('Final converted example text:', convertedText);
+    
+    setText(convertedText);
+    
     if (textareaRef.current) {
       textareaRef.current.focus();
     }
-  }, []);
+    
+    // Show notification
+    showNotification('Example converted to Arabic! 🎉', 'success');
+  }, [transliterate, showNotification]);
 
   return (
     <TooltipProvider>
