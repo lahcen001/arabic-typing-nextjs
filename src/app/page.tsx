@@ -1,103 +1,1173 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Copy, Trash2, History } from 'lucide-react';
+
+interface TransliterationResponse {
+  success: boolean;
+  candidates: string[];
+  best_match: string;
+  original: string;
+  error?: string;
+}
+
+// Structured Data for SEO
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "Arabizi - Arabic Keyboard Online",
+  "alternateName": ["كيبورد عربي", "Clavier Arabe"],
+  "description": "Professional Arabic keyboard with AI transliteration. Convert English/Franco-Arabic to Arabic instantly.",
+  "url": "https://arabizi.com",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Web Browser",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "featureList": [
+    "Real-time Arabic transliteration",
+    "Smart suggestions with AI",
+    "Multiple Arabic fonts support",
+    "Copy history management",
+    "Mixed Arabic-Latin text support",
+    "Responsive design for all devices"
+  ],
+  "inLanguage": ["en", "ar", "fr"],
+  "creator": {
+    "@type": "Organization",
+    "name": "Arabizi Team"
+  },
+  "keywords": "arabic keyboard, كيبورد عربي, clavier arabe, arabic typing, transliteration, yamli, franco arabic"
+};
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [text, setText] = useState('');
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedSuggestion, setSelectedSuggestion] = useState(-1);
+  const [isLoading, setIsLoading] = useState(false);
+  const [currentWord, setCurrentWord] = useState('');
+  const [wordPosition, setWordPosition] = useState({ start: 0, end: 0 });
+  const [cursorPosition, setCursorPosition] = useState({ x: 0, y: 0 });
+  const [copyHistory, setCopyHistory] = useState<string[]>([]);
+  const [userPreferences, setUserPreferences] = useState<Record<string, string>>({});
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const [fontFamily, setFontFamily] = useState('Cairo');
+  const [fontSize, setFontSize] = useState('1.3em');
+
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<NodeJS.Timeout>();
+
+  // Load copy history and user preferences from localStorage on mount
+  useEffect(() => {
+    const savedHistory = localStorage.getItem('arabizi_copy_history');
+    if (savedHistory) {
+      try {
+        setCopyHistory(JSON.parse(savedHistory));
+      } catch (error) {
+        console.error('Error loading copy history:', error);
+        setCopyHistory([]);
+      }
+    }
+
+    const savedPreferences = localStorage.getItem('arabizi_user_preferences');
+    if (savedPreferences) {
+      try {
+        setUserPreferences(JSON.parse(savedPreferences));
+      } catch (error) {
+        console.error('Error loading user preferences:', error);
+        setUserPreferences({});
+      }
+    }
+  }, []);
+
+  // Save copy history to localStorage
+  const saveCopyHistory = useCallback((history: string[]) => {
+    localStorage.setItem('arabizi_copy_history', JSON.stringify(history));
+  }, []);
+
+  // Save user preferences to localStorage
+  const saveUserPreferences = useCallback((preferences: Record<string, string>) => {
+    localStorage.setItem('arabizi_user_preferences', JSON.stringify(preferences));
+  }, []);
+
+  // Add to copy history
+  const addToCopyHistory = useCallback((text: string) => {
+    if (!text.trim()) return;
+    
+    setCopyHistory(prev => {
+      const newHistory = [text, ...prev.filter(item => item !== text)].slice(0, 10);
+      saveCopyHistory(newHistory);
+      return newHistory;
+    });
+  }, [saveCopyHistory]);
+
+  // Remember user selection for a word
+  const rememberUserSelection = useCallback((word: string, selectedSuggestion: string) => {
+    setUserPreferences(prev => {
+      const newPreferences = { ...prev, [word.toLowerCase()]: selectedSuggestion };
+      saveUserPreferences(newPreferences);
+      return newPreferences;
+    });
+  }, [saveUserPreferences]);
+
+  // Prioritize suggestions based on user preferences
+  const prioritizeSuggestions = useCallback((word: string, suggestions: string[]): string[] => {
+    const lowerWord = word.toLowerCase();
+    const preferredSuggestion = userPreferences[lowerWord];
+    
+    if (!preferredSuggestion || !suggestions.includes(preferredSuggestion)) {
+      return suggestions;
+    }
+    
+    // Move preferred suggestion to the front
+    const filteredSuggestions = suggestions.filter(s => s !== preferredSuggestion);
+    return [preferredSuggestion, ...filteredSuggestions];
+  }, [userPreferences]);
+
+  // Transliterate function
+  const transliterate = useCallback(async (word: string): Promise<string[]> => {
+    if (!word.trim()) return [];
+    
+    console.log('Frontend: Transliterating word:', word);
+    
+    try {
+      const response = await fetch('/api/transliterate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text: word }),
+      });
+      
+      console.log('Frontend: API response status:', response.status);
+      
+      const data: TransliterationResponse = await response.json();
+      console.log('Frontend: API response data:', data);
+      
+      if (data.success) {
+        console.log('Frontend: Returning candidates:', data.candidates);
+        return data.candidates;
+      } else {
+        console.error('Transliteration error:', data.error);
+        return [];
+      }
+    } catch (error) {
+      console.error('Network error:', error);
+      return [];
+    }
+  }, []);
+
+  // Get current word and position (enhanced for mixed Arabic-Latin text)
+  const getCurrentWordAndPosition = useCallback((text: string, cursorPos: number) => {
+    const textBeforeCursor = text.substring(0, cursorPos);
+    
+    // Find the start of the current word by looking backwards for whitespace
+    let wordStart = cursorPos;
+    for (let i = cursorPos - 1; i >= 0; i--) {
+      if (/\s/.test(textBeforeCursor[i])) {
+        wordStart = i + 1;
+        break;
+      }
+      if (i === 0) {
+        wordStart = 0;
+        break;
+      }
+    }
+    
+    // Find the end of the current word by looking forwards for whitespace
+    let wordEnd = cursorPos;
+    for (let i = cursorPos; i < text.length; i++) {
+      if (/\s/.test(text[i])) {
+        wordEnd = i;
+        break;
+      }
+      if (i === text.length - 1) {
+        wordEnd = text.length;
+        break;
+      }
+    }
+    
+    const currentWord = text.substring(wordStart, wordEnd).trim();
+    
+    // Check if we have mixed Arabic-Latin text
+    const hasArabic = /[\u0600-\u06FF]/.test(currentWord);
+    const hasLatin = /[a-zA-Z0-9]/.test(currentWord);
+    
+    if (hasArabic && hasLatin) {
+      // Find where Latin characters start after Arabic
+      let latinStart = -1;
+      for (let i = 0; i < currentWord.length; i++) {
+        if (/[a-zA-Z0-9]/.test(currentWord[i])) {
+          // Check if there's Arabic before this position
+          const beforeThis = currentWord.substring(0, i);
+          if (/[\u0600-\u06FF]/.test(beforeThis)) {
+            latinStart = i;
+            break;
+          }
+        }
+      }
+      
+      if (latinStart !== -1) {
+        // Extract only the Latin part for transliteration
+        const latinPart = currentWord.substring(latinStart);
+        const arabicPart = currentWord.substring(0, latinStart);
+        
+        return {
+          word: latinPart, // Only transliterate the Latin part
+          start: wordStart + latinStart, // Adjust start position
+          end: wordEnd,
+          fullWord: currentWord,
+          arabicPrefix: arabicPart,
+          isMixed: true
+        };
+      }
+    }
+    
+    return {
+      word: currentWord,
+      start: wordStart,
+      end: wordEnd,
+      isMixed: false
+    };
+  }, []);
+
+  // Calculate cursor position for suggestions popup (RTL support)
+  const calculateCursorPosition = useCallback(() => {
+    if (!textareaRef.current) return { x: 0, y: 0 };
+    
+    const textarea = textareaRef.current;
+    const cursorPos = textarea.selectionStart;
+    const textareaRect = textarea.getBoundingClientRect();
+    
+    // Get text before cursor
+    const textBeforeCursor = textarea.value.substring(0, cursorPos);
+    const lines = textBeforeCursor.split('\n');
+    const currentLine = lines[lines.length - 1];
+    
+    // Approximate character width and line height for RTL
+    const charWidth = 12; // wider for Arabic characters
+    const lineHeight = 28; // line height from textarea
+    
+    // For RTL, calculate from right side
+    const textareaWidth = textarea.offsetWidth - 32; // minus padding
+    const lineWidth = currentLine.length * charWidth;
+    
+    // Position from right to left
+    const x = Math.max(0, textareaWidth - lineWidth);
+    const y = (lines.length - 1) * lineHeight + lineHeight + 35;
+    
+    return { x, y };
+  }, []);
+
+
+
+  // Handle text change
+  const handleTextChange = useCallback(async (value: string) => {
+    console.log('Frontend: Text changed to:', value);
+    setText(value);
+    
+    if (!textareaRef.current) return;
+    
+    const cursorPos = textareaRef.current.selectionStart;
+    const { word, start, end } = getCurrentWordAndPosition(value, cursorPos);
+    
+    console.log('Frontend: Current word:', word, 'Position:', { start, end });
+    
+    setCurrentWord(word);
+    setWordPosition({ start, end });
+    
+    // Update cursor position for suggestions
+    const position = calculateCursorPosition();
+    setCursorPosition(position);
+    
+    // Clear previous debounce
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    
+    if (word && word.length >= 1 && /^[a-zA-Z0-9]+$/.test(word)) {
+      console.log('Frontend: Word matches pattern, starting transliteration...', {
+        word,
+        length: word.length,
+        pattern: /^[a-zA-Z0-9]+$/.test(word),
+        position: { start, end }
+      });
+      setIsLoading(true);
+      setShowSuggestions(true);
+      
+      // Debounce the API call
+      debounceRef.current = setTimeout(async () => {
+        console.log('Frontend: Debounce timeout, calling transliterate...');
+        const candidates = await transliterate(word);
+        console.log('Frontend: Got candidates:', candidates);
+        if (candidates && candidates.length > 0) {
+          // Prioritize suggestions based on user preferences
+          const prioritizedCandidates = prioritizeSuggestions(word, candidates);
+          console.log('Frontend: Prioritized candidates:', prioritizedCandidates);
+          setSuggestions(prioritizedCandidates);
+          setSelectedSuggestion(-1);
+          setShowSuggestions(true);
+        }
+        setIsLoading(false);
+      }, 100);
+    } else {
+      console.log('Frontend: Word does not match pattern or is empty', {
+        word,
+        length: word ? word.length : 0,
+        pattern: word ? /^[a-zA-Z0-9]+$/.test(word) : false
+      });
+      setShowSuggestions(false);
+      setSuggestions([]);
+      setIsLoading(false);
+    }
+  }, [getCurrentWordAndPosition, transliterate, prioritizeSuggestions]);
+
+  // Handle key down
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!showSuggestions || suggestions.length === 0) return;
+    
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedSuggestion(prev => 
+          prev < suggestions.length - 1 ? prev + 1 : 0
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedSuggestion(prev => 
+          prev > 0 ? prev - 1 : suggestions.length - 1
+        );
+        break;
+      case 'PageDown':
+        e.preventDefault();
+        setSelectedSuggestion(prev => 
+          Math.min(prev + 5, suggestions.length - 1)
+        );
+        break;
+      case 'PageUp':
+        e.preventDefault();
+        setSelectedSuggestion(prev => 
+          Math.max(prev - 5, -1)
+        );
+        break;
+      case 'Home':
+        e.preventDefault();
+        setSelectedSuggestion(0);
+        break;
+      case 'End':
+        e.preventDefault();
+        setSelectedSuggestion(suggestions.length - 1);
+        break;
+      case 'Enter':
+        e.preventDefault();
+        selectSuggestion(selectedSuggestion >= 0 ? selectedSuggestion : 0);
+        break;
+      case ' ': // Space key
+        e.preventDefault();
+        // Replace the Latin word with the selected suggestion (or first if none selected) and add space
+        if (suggestions.length > 0) {
+          const suggestionIndex = selectedSuggestion >= 0 ? selectedSuggestion : 0;
+          const selectedText = suggestions[suggestionIndex];
+          
+          // Remember user selection for future prioritization
+          if (currentWord) {
+            rememberUserSelection(currentWord, selectedText);
+          }
+          
+          // Check if we're dealing with mixed text
+          const wordInfo = getCurrentWordAndPosition(text, textareaRef.current?.selectionStart || 0);
+          
+          let newText;
+          if (wordInfo.isMixed && wordInfo.arabicPrefix) {
+            // For mixed text, combine Arabic prefix with selected Arabic suggestion
+            const combinedText = wordInfo.arabicPrefix + selectedText;
+            newText = text.substring(0, wordInfo.start - wordInfo.arabicPrefix.length) + 
+                     combinedText + ' ' +
+                     text.substring(wordInfo.end);
+          } else {
+            // Normal replacement
+            newText = text.substring(0, wordPosition.start) + 
+                     selectedText + ' ' +
+                     text.substring(wordPosition.end);
+          }
+          
+          setText(newText);
+          setShowSuggestions(false);
+          setSuggestions([]);
+          
+          // Set cursor position after the inserted text
+          setTimeout(() => {
+            if (textareaRef.current) {
+              let newCursorPos;
+              if (wordInfo.isMixed && wordInfo.arabicPrefix) {
+                newCursorPos = wordInfo.start - wordInfo.arabicPrefix.length + wordInfo.arabicPrefix.length + selectedText.length + 1;
+              } else {
+                newCursorPos = wordPosition.start + selectedText.length + 1;
+              }
+              textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+              textareaRef.current.focus();
+            }
+          }, 0);
+        }
+        break;
+      case 'Escape':
+        setShowSuggestions(false);
+        setSuggestions([]);
+        break;
+    }
+  }, [showSuggestions, suggestions, selectedSuggestion, text, wordPosition, getCurrentWordAndPosition, currentWord, rememberUserSelection]);
+
+  // Handle textarea blur (when user clicks outside)
+  const handleBlur = useCallback(() => {
+    // Just hide suggestions when clicking outside
+    setShowSuggestions(false);
+    setSuggestions([]);
+  }, []);
+
+  // Select suggestion (enhanced for mixed text)
+  const selectSuggestion = useCallback((index: number, addSpace: boolean = true) => {
+    if (index < 0 || index >= suggestions.length) return;
+    
+    const selectedText = suggestions[index];
+    const spaceAfter = addSpace ? ' ' : '';
+    
+    // Remember user selection for future prioritization
+    if (currentWord) {
+      rememberUserSelection(currentWord, selectedText);
+    }
+    
+    // Check if we're dealing with mixed text
+    const wordInfo = getCurrentWordAndPosition(text, textareaRef.current?.selectionStart || 0);
+    
+    let newText;
+    if (wordInfo.isMixed && wordInfo.arabicPrefix) {
+      // For mixed text, combine Arabic prefix with selected Arabic suggestion
+      const combinedText = wordInfo.arabicPrefix + selectedText;
+      newText = text.substring(0, wordInfo.start - wordInfo.arabicPrefix.length) + 
+               combinedText + spaceAfter +
+               text.substring(wordInfo.end);
+    } else {
+      // Normal replacement
+      newText = text.substring(0, wordPosition.start) + 
+               selectedText + spaceAfter +
+               text.substring(wordPosition.end);
+    }
+    
+    setText(newText);
+    setShowSuggestions(false);
+    setSuggestions([]);
+    
+    // Set cursor position after the inserted text
+    setTimeout(() => {
+      if (textareaRef.current) {
+        let newCursorPos;
+        if (wordInfo.isMixed && wordInfo.arabicPrefix) {
+          newCursorPos = wordInfo.start - wordInfo.arabicPrefix.length + wordInfo.arabicPrefix.length + selectedText.length + spaceAfter.length;
+        } else {
+          newCursorPos = wordPosition.start + selectedText.length + spaceAfter.length;
+        }
+        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+        textareaRef.current.focus();
+      }
+    }, 0);
+  }, [suggestions, text, wordPosition, getCurrentWordAndPosition, currentWord, rememberUserSelection]);
+
+  // Copy all text with animation
+  const copyAllText = useCallback((buttonElement?: HTMLElement) => {
+    if (!text.trim()) {
+      showNotification('No text to copy! ❌', 'error');
+      return;
+    }
+    
+    // Add button animation if button element is provided
+    if (buttonElement) {
+      buttonElement.style.animation = 'copyButtonPulse 0.3s ease-out';
+      setTimeout(() => {
+        buttonElement.style.animation = '';
+      }, 300);
+      
+      // Add button animation styles if not already added
+      if (!document.querySelector('#button-animation-styles')) {
+        const style = document.createElement('style');
+        style.id = 'button-animation-styles';
+        style.textContent = `
+          @keyframes copyButtonPulse {
+            0% { 
+              transform: scale(1); 
+              background-color: white;
+            }
+            50% { 
+              transform: scale(0.95); 
+              background-color: rgba(34, 197, 94, 0.1);
+            }
+            100% { 
+              transform: scale(1); 
+              background-color: white;
+            }
+          }
+        `;
+        document.head.appendChild(style);
+      }
+    }
+    
+    navigator.clipboard.writeText(text).then(() => {
+      addToCopyHistory(text);
+      showNotification('Text copied to clipboard! 📋✨', 'success');
+    }).catch(() => {
+      // Fallback for older browsers
+      if (textareaRef.current) {
+        textareaRef.current.select();
+        document.execCommand('copy');
+        addToCopyHistory(text);
+        showNotification('Text copied to clipboard! 📋✨', 'success');
+      }
+    });
+  }, [text, addToCopyHistory]);
+
+  // Handle double click to copy all text
+  const handleDoubleClick = useCallback((e: React.MouseEvent<HTMLTextAreaElement>) => {
+    e.preventDefault(); // Prevent text selection
+    copyAllText();
+    
+    // Add enhanced visual feedback animation
+    if (textareaRef.current) {
+      const textarea = textareaRef.current;
+      
+      // Create copy animation overlay
+      const overlay = document.createElement('div');
+      overlay.className = 'copy-animation-overlay';
+      overlay.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(45deg, rgba(34, 197, 94, 0.2), rgba(59, 130, 246, 0.2));
+        border-radius: 12px;
+        pointer-events: none;
+        z-index: 10;
+        animation: copyPulse 0.6s ease-out;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+      `;
+      overlay.innerHTML = '📋✨';
+      
+      // Add CSS animation keyframes if not already added
+      if (!document.querySelector('#copy-animation-styles')) {
+        const style = document.createElement('style');
+        style.id = 'copy-animation-styles';
+        style.textContent = `
+          @keyframes copyPulse {
+            0% { 
+              opacity: 0; 
+              transform: scale(0.8); 
+            }
+            50% { 
+              opacity: 1; 
+              transform: scale(1.1); 
+            }
+            100% { 
+              opacity: 0; 
+              transform: scale(1); 
+            }
+          }
+          @keyframes copyBorder {
+            0% { 
+              border-color: #3b82f6; 
+              box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+            }
+            50% { 
+              border-color: #22c55e; 
+              box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.2);
+            }
+            100% { 
+              border-color: #3b82f6; 
+              box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+            }
+          }
+        `;
+        document.head.appendChild(style);
+      }
+      
+      // Position overlay relative to textarea
+      const textareaRect = textarea.getBoundingClientRect();
+      const parent = textarea.parentElement;
+      if (parent) {
+        parent.style.position = 'relative';
+        parent.appendChild(overlay);
+      }
+      
+      // Animate textarea border
+      textarea.style.animation = 'copyBorder 0.6s ease-out';
+      
+      // Remove overlay and reset styles after animation
+      setTimeout(() => {
+        if (overlay.parentElement) {
+          overlay.remove();
+        }
+        textarea.style.animation = '';
+      }, 600);
+    }
+  }, [copyAllText]);
+
+
+
+  // Show notification
+  const showNotification = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `fixed top-4 right-4 p-4 rounded-lg shadow-lg z-50 transition-all duration-300 ${
+      type === 'error' ? 'bg-red-500 text-white' : 
+      type === 'info' ? 'bg-blue-500 text-white' : 
+      'bg-green-500 text-white'
+    }`;
+    notification.textContent = message;
+    
+    document.body.appendChild(notification);
+    
+    // Show notification
+    setTimeout(() => {
+      notification.style.transform = 'translateX(0)';
+      notification.style.opacity = '1';
+    }, 10);
+    
+    // Hide notification after 3 seconds
+    setTimeout(() => {
+      notification.style.transform = 'translateX(100%)';
+      notification.style.opacity = '0';
+      setTimeout(() => {
+        if (notification.parentNode) {
+          notification.remove();
+        }
+      }, 300);
+    }, 3000);
+  }, []);
+
+  // Clear text
+  const clearText = useCallback(() => {
+    setText('');
+    setShowSuggestions(false);
+    setSuggestions([]);
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, []);
+
+  // Copy history item with animation
+  const copyHistoryItem = useCallback((item: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent setting text in textarea
+    
+    // Get the clicked button element for animation
+    const button = e.currentTarget as HTMLElement;
+    const card = button.closest('.history-card') as HTMLElement;
+    
+    // Create floating copy icon animation
+    const floatingIcon = document.createElement('div');
+    floatingIcon.style.cssText = `
+      position: fixed;
+      z-index: 1000;
+      font-size: 1.5rem;
+      pointer-events: none;
+      animation: floatUp 1s ease-out forwards;
+    `;
+    floatingIcon.innerHTML = '📋✨';
+    
+    // Position floating icon at button location
+    const buttonRect = button.getBoundingClientRect();
+    floatingIcon.style.left = `${buttonRect.left + buttonRect.width / 2}px`;
+    floatingIcon.style.top = `${buttonRect.top}px`;
+    
+    // Add floating animation if not already added
+    if (!document.querySelector('#float-animation-styles')) {
+      const style = document.createElement('style');
+      style.id = 'float-animation-styles';
+      style.textContent = `
+        @keyframes floatUp {
+          0% { 
+            opacity: 1; 
+            transform: translateY(0) scale(1); 
+          }
+          100% { 
+            opacity: 0; 
+            transform: translateY(-50px) scale(1.2); 
+          }
+        }
+        @keyframes cardPulse {
+          0% { 
+            transform: scale(1); 
+            background-color: white;
+          }
+          50% { 
+            transform: scale(1.02); 
+            background-color: rgba(34, 197, 94, 0.1);
+          }
+          100% { 
+            transform: scale(1); 
+            background-color: white;
+          }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    
+    document.body.appendChild(floatingIcon);
+    
+    // Animate the card
+    if (card) {
+      card.style.animation = 'cardPulse 0.4s ease-out';
+      setTimeout(() => {
+        card.style.animation = '';
+      }, 400);
+    }
+    
+    // Remove floating icon after animation
+    setTimeout(() => {
+      if (floatingIcon.parentElement) {
+        floatingIcon.remove();
+      }
+    }, 1000);
+    
+    navigator.clipboard.writeText(item).then(() => {
+      showNotification('History item copied! 📋', 'success');
+    }).catch(() => {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = item;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      showNotification('History item copied! 📋', 'success');
+    });
+  }, [showNotification]);
+
+  // Handle paste event to auto-convert all Latin words
+  const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    e.preventDefault();
+    
+    const pastedText = e.clipboardData.getData('text');
+    if (!pastedText) return;
+    
+    console.log('Paste detected:', pastedText);
+    
+    // Split text into words while preserving spaces and punctuation
+    const words = pastedText.split(/(\s+|[^\w\s])/);
+    const processedWords: string[] = [];
+    
+    for (const word of words) {
+      // Check if word is Latin (contains only English letters and numbers)
+      if (word && /^[a-zA-Z0-9]+$/.test(word)) {
+        console.log('Processing Latin word:', word);
+        try {
+          const candidates = await transliterate(word);
+          if (candidates && candidates.length > 0) {
+            console.log('Converting', word, 'to', candidates[0]);
+            processedWords.push(candidates[0]); // Use first suggestion
+          } else {
+            processedWords.push(word); // Keep original if no translation
+          }
+        } catch (error) {
+          console.error('Translation error for word:', word, error);
+          processedWords.push(word); // Keep original on error
+        }
+      } else {
+        // Keep spaces, punctuation, and non-Latin text as is
+        processedWords.push(word);
+      }
+    }
+    
+    const convertedText = processedWords.join('');
+    console.log('Final converted text:', convertedText);
+    
+    // Get current cursor position
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    
+    // Insert converted text at cursor position
+    const newText = text.substring(0, start) + convertedText + text.substring(end);
+    setText(newText);
+    
+    // Set cursor position after the inserted text
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newCursorPos = start + convertedText.length;
+        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+        textareaRef.current.focus();
+      }
+    }, 0);
+    
+    // Show notification
+    showNotification('Text pasted and converted! 🎉', 'success');
+  }, [text, transliterate, showNotification]);
+
+  // Set example text
+  const setExample = useCallback((example: string) => {
+    setText(example);
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, []);
+
+  return (
+    <TooltipProvider>
+      {/* Structured Data for SEO */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify(structuredData),
+        }}
+      />
+          <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+      {/* Subtle Background */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -inset-10 opacity-20">
+          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl animate-blob"></div>
+          <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-purple-200 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-2000"></div>
+          <div className="absolute bottom-1/4 left-1/3 w-96 h-96 bg-indigo-200 rounded-full mix-blend-multiply filter blur-3xl animate-blob animation-delay-4000"></div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+      </div>
+      
+      {/* Header */}
+      <header className="border-b border-gray-200 bg-white/80 backdrop-blur-sm sticky top-0 z-40">
+          <div className="container mx-auto px-4 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center border border-indigo-200">
+                  <span className="text-indigo-600 font-bold text-lg">🌙</span>
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                    Arabizi
+                  </h1>
+                  <p className="text-sm text-gray-600">Professional Arabic Keyboard</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                {/* History moved above textarea */}
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <main className="container mx-auto px-4 py-8">
+          {/* Hero Section */}
+          <div className="text-center mb-8">
+            <h2 className="text-4xl font-bold text-gray-900 mb-4">
+              Professional Arabic Typing Tool
+            </h2>
+            <p className="text-xl text-gray-600 mb-6 max-w-3xl mx-auto">
+              Convert English to Arabic instantly with AI-powered suggestions. 
+              The most advanced Arabic keyboard online with smart transliteration.
+            </p>
+            
+
+          </div>
+
+          {/* Main Editor */}
+          <div className="bg-white/70 backdrop-blur-sm rounded-3xl max-w-4xl mx-auto overflow-hidden border border-white/50">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900 flex items-center gap-2 mb-2">
+                    Arabic Text Editor
+                  </h3>
+                  <p className="text-gray-600">
+                    Type in English or Franco-Arabic and get instant Arabic suggestions
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {currentWord && (
+                    <div className="bg-indigo-100 rounded-full px-3 py-1 text-sm text-indigo-700 border border-indigo-200">
+                      Typing: {currentWord}
+                    </div>
+                  )}
+                  {isLoading && (
+                    <div className="bg-blue-100 rounded-full px-3 py-1 text-sm text-blue-700 animate-pulse border border-blue-200">
+                      Loading...
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              {/* Copy History Section */}
+              {copyHistory.length > 0 && (
+                <div className="bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-semibold text-indigo-900 flex items-center gap-2">
+                      <History className="h-4 w-4" />
+                      Recent History ({copyHistory.length}/10)
+                    </h4>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                      onClick={() => {
+                        setCopyHistory([]);
+                        saveCopyHistory([]);
+                        showNotification('History cleared!');
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3 mr-1" />
+                      Clear
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                    {copyHistory.slice(0, 4).map((item, index) => (
+                      <Card key={index} className="history-card cursor-pointer hover:bg-white hover:shadow-md transition-all duration-200 group border-indigo-200" onClick={() => setText(item)}>
+                        <CardContent className="p-3">
+                          <div className="flex items-start gap-2">
+                            <div className="w-6 h-6 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0 group-hover:bg-indigo-200 transition-colors">
+                              <span className="text-indigo-600 font-semibold text-xs">{index + 1}</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p 
+                                className="text-xs text-gray-700 leading-relaxed break-words"
+                                style={{ 
+                                  direction: 'rtl',
+                                  textAlign: 'right',
+                                  fontFamily: 'Cairo, sans-serif'
+                                }}
+                              >
+                                {item.length > 50 ? `${item.substring(0, 50)}...` : item}
+                              </p>
+                            </div>
+                            <button
+                              onClick={(e) => copyHistoryItem(item, e)}
+                              className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 hover:bg-indigo-100 rounded text-indigo-600"
+                              title="Copy this text"
+                            >
+                              <Copy className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                  {copyHistory.length > 4 && (
+                    <p className="text-xs text-indigo-600 mt-2 text-center">
+                      Showing 4 of {copyHistory.length} items
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Toolbar */}
+              <div className="flex flex-wrap items-center gap-2 p-3 bg-gray-50 rounded-xl border border-gray-200">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button 
+                      onClick={(e) => copyAllText(e.currentTarget)}
+                      className="bg-white hover:bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 transition-all duration-200 flex items-center gap-2"
+                    >
+                      <Copy className="h-4 w-4" />
+                      Copy
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Copy all text (or double-click textarea)</p>
+                  </TooltipContent>
+                </Tooltip>
+                
+                <button 
+                  onClick={clearText}
+                  className="bg-white hover:bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 transition-all duration-200 flex items-center gap-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Clear
+                </button>
+
+
+                
+                <Separator orientation="vertical" className="h-6" />
+                
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">Font:</span>
+                  <Select value={fontFamily} onValueChange={setFontFamily}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Cairo">Cairo</SelectItem>
+                      <SelectItem value="Noto Sans Arabic">Noto Sans Arabic</SelectItem>
+                      <SelectItem value="Amiri">Amiri</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600">Size:</span>
+                  <Select value={fontSize} onValueChange={setFontSize}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1em">Small</SelectItem>
+                      <SelectItem value="1.3em">Medium</SelectItem>
+                      <SelectItem value="1.6em">Large</SelectItem>
+                      <SelectItem value="2em">X-Large</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Text Editor */}
+              <div className="relative">
+                <Textarea
+                  ref={textareaRef}
+                  value={text}
+                  onChange={(e) => handleTextChange(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onDoubleClick={handleDoubleClick}
+                  onBlur={handleBlur}
+                  onPaste={handlePaste}
+                  placeholder="ابدأ بكتابة النص هنا... (مثل: salam 7abibi, ahlan wa sahlan)"
+                  className={`resize-none transition-all duration-300 min-h-[400px] border-2 border-gray-200 focus:border-blue-400 rounded-xl p-6 text-lg leading-relaxed shadow-inner bg-gradient-to-br from-white to-gray-50 ${
+                    fontFamily === 'Cairo' ? 'font-cairo' : 
+                    fontFamily === 'Noto Sans Arabic' ? 'font-noto-arabic' :
+                    fontFamily === 'Amiri' ? 'font-amiri' : 'font-cairo'
+                  }`}
+                  style={{
+                    fontSize: fontSize,
+                    direction: 'rtl',
+                    textAlign: 'right',
+                    lineHeight: '2',
+                    fontWeight: '500'
+                  }}
+                />
+                
+
+
+                {/* Suggestions Popup */}
+                {showSuggestions && suggestions.length > 0 && (
+                  <div 
+                    ref={suggestionsRef}
+                    className="absolute z-50 w-48 max-h-48 overflow-y-auto bg-white rounded-lg shadow-xl border-2 border-blue-200"
+                    style={{
+                      top: `${cursorPosition.y}px`,
+                      right: `${Math.max(0, (textareaRef.current?.offsetWidth || 400) - cursorPosition.x - 192)}px`,
+                      marginTop: '2px'
+                    }}
+                  >
+                    <div className="p-2">
+                      {suggestions.slice(0, 6).map((suggestion, index) => (
+                        <div
+                          key={index}
+                          className={`px-3 py-2 text-sm rounded-md cursor-pointer transition-colors ${
+                            index === selectedSuggestion ? 'bg-blue-100 text-gray-900 border border-blue-300' : 
+                            index === 0 ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'
+                          }`}
+                          onClick={() => selectSuggestion(index)}
+                          onMouseEnter={() => setSelectedSuggestion(index)}
+                        >
+                          <span 
+                            className={`font-semibold text-gray-900 block ${
+                              fontFamily === 'Cairo' ? 'font-cairo' : 
+                              fontFamily === 'Noto Sans Arabic' ? 'font-noto-arabic' :
+                              fontFamily === 'Amiri' ? 'font-amiri' : 'font-cairo'
+                            }`}
+                            style={{
+                              direction: 'rtl',
+                              fontSize: '1.1em',
+                              textAlign: 'right'
+                            }}
+                          >
+                            {suggestion}
+                          </span>
+                          {index === selectedSuggestion && (
+                            <span className="text-xs text-blue-600 mt-1 block">Press Space/Enter</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+
+              </div>
+
+
+
+              {/* Instructions */}
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl">
+                <div className="p-4">
+                  <h4 className="font-semibold text-blue-900 mb-2">💡 How to use:</h4>
+                  <div className="text-sm text-blue-800 space-y-1">
+                    <p>• Type in English or Franco-Arabic (like "7abibi", "salam")</p>
+                    <p>• Press <strong>Space or Enter</strong> to select the highlighted suggestion</p>
+                    <p>• <strong>Paste Latin text</strong> to auto-convert all words to Arabic</p>
+                    <p>• Use <strong>arrow keys ↑↓</strong> to navigate suggestions</p>
+                    <p>• <strong>Double-click</strong> anywhere in the text to copy everything</p>
+                    <p>• Use <strong>Page Up/Down</strong> to jump 5 suggestions, <strong>Home/End</strong> for first/last</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Examples */}
+              <div>
+                <h4 className="font-semibold mb-3 text-gray-900">Try these examples:</h4>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    'salam 7abibi',
+                    'ahlan wa sahlan', 
+                    'shukran jazeelan',
+                    'mabrook 3ala',
+                    'wa7da tneyn'
+                  ].map((example) => (
+                    <button
+                      key={example}
+                      onClick={() => setExample(example)}
+                      className="bg-white hover:bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 transition-all duration-200"
+                    >
+                      {example}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <footer className="mt-16 text-center">
+            <div className="bg-white/70 backdrop-blur-sm rounded-3xl max-w-4xl mx-auto border border-white/50">
+              <div className="p-6">
+                <div className="flex justify-center gap-8 mb-4 flex-wrap">
+                  <a href="/terms" className="text-indigo-600 hover:text-indigo-800 font-medium transition-colors">
+                    Terms of Service
+                  </a>
+                  <a href="/privacy" className="text-indigo-600 hover:text-indigo-800 font-medium transition-colors">
+                    Privacy Policy
+                  </a>
+                </div>
+                <div className="text-gray-600 text-sm">
+                  <p>© 2025 Arabizi - Professional Arabic Keyboard Online</p>
+                  <p>Smart Arabic transliterator with AI suggestions • No download required</p>
+                </div>
+              </div>
+            </div>
+          </footer>
+        </main>
+      </div>
+    </TooltipProvider>
   );
 }
