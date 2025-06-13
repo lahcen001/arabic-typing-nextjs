@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { TranslationBackupService } from '../../../services/translationBackup';
 
 interface TransliterateRequest {
   text?: string;
@@ -61,17 +62,39 @@ class Transliterator {
 }
 
 class Yamli {
-  async transliterate(word: string): Promise<string[]> {
+  async transliterate(word: string): Promise<{ suggestions: string[], source: 'api' | 'backup' | 'fallback' }> {
     const transliterator = new Transliterator(word);
-    const result = await transliterator.transliterate(word);
+    let result = await transliterator.transliterate(word);
     
-    // If Yamli API fails, provide some basic fallback translations
-    if (result.length === 0) {
-      console.log('Yamli API failed, using fallback translations');
-      return this.getFallbackTranslations(word);
+    // If Yamli API succeeds, save to backup and return
+    if (result.length > 0) {
+      console.log('Yamli API succeeded, saving to backup');
+      // Save to backup database (async, don't wait)
+      TranslationBackupService.saveTranslation(word, result, result[0]).catch(err => 
+        console.error('Failed to save to backup:', err)
+      );
+      return { suggestions: result, source: 'api' };
     }
     
-    return result;
+    // If Yamli API fails, try backup database
+    console.log('Yamli API failed, trying backup database');
+    try {
+      const backupTranslation = await TranslationBackupService.getTranslation(word);
+      if (backupTranslation) {
+        console.log('Found translation in backup database');
+        return { 
+          suggestions: backupTranslation.arabicSuggestions, 
+          source: 'backup' 
+        };
+      }
+    } catch (error) {
+      console.error('Backup database error:', error);
+    }
+    
+    // If both API and backup fail, use fallback translations
+    console.log('Both API and backup failed, using fallback translations');
+    const fallbackSuggestions = this.getFallbackTranslations(word);
+    return { suggestions: fallbackSuggestions, source: 'fallback' };
   }
   
   private getFallbackTranslations(word: string): string[] {
@@ -106,6 +129,46 @@ class Yamli {
       'night': ['ليل', 'ليلة'],
       'morning': ['صباح'],
       'evening': ['مساء'],
+      'ana': ['أنا'],
+      'anta': ['أنت'],
+      'anti': ['أنتِ'],
+      'huwa': ['هو'],
+      'hiya': ['هي'],
+      'nahnu': ['نحن'],
+      'antum': ['أنتم'],
+      'hum': ['هم'],
+      'hunna': ['هن'],
+      'min': ['من'],
+      'ila': ['إلى'],
+      'fi': ['في'],
+      'ala': ['على'],
+      'ma3a': ['مع'],
+      'bila': ['بلا'],
+      'bayn': ['بين'],
+      'taht': ['تحت'],
+      'fawq': ['فوق'],
+      'qadim': ['قديم'],
+      'jadid': ['جديد'],
+      'kabir': ['كبير'],
+      'saghir': ['صغير'],
+      'jamil': ['جميل'],
+      'qabih': ['قبيح'],
+      'sa3id': ['سعيد'],
+      'hazin': ['حزين'],
+      'a': ['اى', 'ا'],
+      'an': ['أن', 'عن'],
+      'la': ['لا'],
+      'wa': ['و', 'وا'],
+      'aw': ['أو'],
+      'laken': ['لكن'],
+      'aydan': ['أيضا'],
+      'faqat': ['فقط'],
+      'kull': ['كل'],
+      'ba3d': ['بعد'],
+      'qabl': ['قبل'],
+      'al7in': ['الآن'],
+      'ghadan': ['غدا'],
+      'ams': ['أمس']
     };
     
     const lowerWord = word.toLowerCase();
@@ -131,16 +194,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get transliteration suggestions
+    // Get transliteration suggestions with source information
     console.log('Calling yamli.transliterate...');
-    const suggestions = await yamli.transliterate(text);
+    const { suggestions, source } = await yamli.transliterate(text);
     console.log('Suggestions received:', suggestions);
+    console.log('Source:', source);
     
     const response = {
       success: true,
       candidates: suggestions,
       best_match: suggestions[0] || text,
-      original: text
+      original: text,
+      source: source, // 'api', 'backup', or 'fallback'
+      backup_available: source !== 'fallback'
     };
     
     console.log('Sending response:', response);
