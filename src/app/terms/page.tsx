@@ -190,6 +190,7 @@ export default function Terms() {
           <div className="text-center text-white/80">
             <p>© 2025 Arabizi - Professional Arabic Keyboard Online</p>
             <p className="text-sm mt-2">Smart Arabic transliterator with AI suggestions • No download required</p>
+            <p className="text-xs mt-2 text-white/60">Version 1.0.0</p>
           </div>
         </div>
       </footer>

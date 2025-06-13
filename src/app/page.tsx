@@ -1195,6 +1195,7 @@ export default function Home() {
                 <div className="text-gray-600 text-sm">
                   <p>© 2025 Arabizi - Professional Arabic Keyboard Online</p>
                   <p>Smart Arabic transliterator with AI suggestions • No download required</p>
+                  <p className="mt-2 text-xs text-gray-500">Version 1.0.0</p>
                 </div>
               </div>
             </div>

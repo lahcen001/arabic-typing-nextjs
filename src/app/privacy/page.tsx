@@ -277,6 +277,7 @@ export default function Privacy() {
           <div className="text-center text-gray-600">
             <p>© 2025 Arabizi - Professional Arabic Keyboard Online</p>
             <p className="text-sm mt-2">Smart Arabic transliterator with AI suggestions • No download required</p>
+            <p className="text-xs mt-2 text-gray-500">Version 1.0.0</p>
           </div>
         </div>
       </footer>
