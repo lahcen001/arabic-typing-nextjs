@@ -480,8 +480,7 @@ export default function Home() {
         textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
         textareaRef.current.focus();
       }
-    }, 0);
-  }, [suggestions, text, wordPosition, getCurrentWordAndPosition, currentWord, rememberUserSelection]);
+    }, [suggestions, text, wordPosition, getCurrentWordAndPosition, currentWord, rememberUserSelection]);
 
   // Copy all text with animation
   const copyAllText = useCallback((buttonElement?: HTMLElement) => {
